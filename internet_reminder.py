@@ -60,12 +60,12 @@ REMINDER_DAY = 20                   # Tag im Monat, an dem ggf. erinnert wird
 
 POLL_MESSAGE = (
     f"Hallo {MITBEWOHNER_NAME}! 📅 Kurze Erinnerung: Hast du deinen Internet-Anteil für diesen "
-    "Monat schon überwiesen? Bitte antworte kurz mit *Ja* oder *Nein*."
+    "Monat schon bezahlt? Bitte antworte kurz mit *Ja* oder *Nein*."
 )
 REMINDER_MESSAGE = (
     f"Hey {MITBEWOHNER_NAME}, kurzer Reminder ⏰ – laut Chat steht deine Antwort zum "
     "Internet-Anteil diesen Monat noch aus (oder war ein Nein). "
-    "Kannst du das bitte zeitnah überweisen? Danke! 🙏"
+    "Kannst du das bitte zeitnah bezahlen? Danke! 🙏"
 )
 
 # Firefox-Profil, in dem die WhatsApp-Web-Session gespeichert wird
