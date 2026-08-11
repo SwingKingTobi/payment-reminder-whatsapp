@@ -14,7 +14,7 @@ WICHTIG - bitte vor dem ersten Lauf lesen:
    Das ist gegen die WhatsApp-Nutzungsbedingungen für "automatisierte"
    Nutzung - bei diesem geringen Volumen (2x/Monat) ist das Risiko einer
    Sperre praktisch vernachlässigbar, aber es gibt keine Garantie.
-2. Beim allerersten Start öffnet sich ein sichtbares Chrome-Fenster mit
+2. Beim allerersten Start öffnet sich ein sichtbares Firefox-Fenster mit
    einem QR-Code. Einmal mit dem Handy scannen (WhatsApp > Verknüpfte
    Geräte). Die Session wird danach im Profilordner gespeichert, sodass
    spätere Läufe (auch headless) ohne erneutes Scannen funktionieren.
@@ -26,7 +26,10 @@ WICHTIG - bitte vor dem ersten Lauf lesen:
    oder seine Telefonnummer, falls nicht gespeichert).
 
 Installation:
-    pip install selenium webdriver-manager
+    pip install selenium
+    (Firefox muss installiert sein; den passenden "geckodriver" lädt
+    Selenium ab Version 4.6 automatisch selbst herunter - keine manuelle
+    Installation nötig.)
 
 Einrichtung als täglicher Cron-Job (einmal am Tag reicht, z.B. 9 Uhr):
     crontab -e
@@ -40,8 +43,9 @@ from datetime import date, datetime
 from pathlib import Path
 
 from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.firefox.firefox_profile import FirefoxProfile
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -56,16 +60,16 @@ REMINDER_DAY = 20                   # Tag im Monat, an dem ggf. erinnert wird
 
 POLL_MESSAGE = (
     f"Hallo {MITBEWOHNER_NAME}! 📅 Kurze Erinnerung: Hast du deinen Internet-Anteil für diesen "
-    "Monat schon bezahlt? Bitte antworte kurz mit *Ja* oder *Nein*."
+    "Monat schon überwiesen? Bitte antworte kurz mit *Ja* oder *Nein*."
 )
 REMINDER_MESSAGE = (
     f"Hey {MITBEWOHNER_NAME}, kurzer Reminder ⏰ – laut Chat steht deine Antwort zum "
     "Internet-Anteil diesen Monat noch aus (oder war ein Nein). "
-    "Kannst du das bitte zeitnah bezahlen? Danke! 🙏"
+    "Kannst du das bitte zeitnah überweisen? Danke! 🙏"
 )
 
-# Chrome-Profil, in dem die WhatsApp-Web-Session gespeichert wird
-CHROME_PROFILE_DIR = str(Path.home() / ".whatsapp_reminder_profile")
+# Firefox-Profil, in dem die WhatsApp-Web-Session gespeichert wird
+FIREFOX_PROFILE_DIR = str(Path.home() / ".whatsapp_reminder_profile")
 
 # Statusdatei, merkt sich pro Monat, was schon erledigt wurde
 STATE_FILE = Path(__file__).parent / "reminder_state.json"
@@ -75,7 +79,7 @@ HEADLESS = True   # nach erfolgreichem ersten QR-Login auf True stellen
 # =============================== SELEKTOREN =================================
 # Diese CSS-Selektoren können sich ändern, wenn WhatsApp Web sein Layout
 # aktualisiert. Falls das Skript nichts mehr findet, hier zuerst nachsehen
-# (z.B. mit den Chrome-DevTools auf web.whatsapp.com prüfen).
+# (z.B. mit den Firefox-DevTools auf web.whatsapp.com prüfen).
 
 SEARCH_BOX_SELECTOR = 'div[contenteditable="true"][data-tab="3"]'
 MESSAGE_BOX_SELECTOR = 'div[contenteditable="true"][data-tab="10"]'
@@ -110,14 +114,19 @@ def get_month_state(today: date) -> dict:
     return state
 
 
-def start_driver() -> webdriver.Chrome:
+def start_driver() -> webdriver.Firefox:
+    # Persistentes Profil verwenden (existiert es noch nicht, legt Firefox
+    # beim ersten Start automatisch eins im angegebenen Ordner an).
+    Path(FIREFOX_PROFILE_DIR).mkdir(parents=True, exist_ok=True)
+    profile = FirefoxProfile(FIREFOX_PROFILE_DIR)
+
     options = Options()
-    options.add_argument(f"--user-data-dir={CHROME_PROFILE_DIR}")
-    options.add_argument("--profile-directory=Default")
-    options.add_argument("--window-size=1200,900")
+    options.profile = profile
+    options.add_argument("--width=1200")
+    options.add_argument("--height=900")
     if HEADLESS:
-        options.add_argument("--headless=new")
-    driver = webdriver.Chrome(service=Service(), options=options)
+        options.add_argument("-headless")
+    driver = webdriver.Firefox(service=Service(), options=options)
     driver.get("https://web.whatsapp.com")
     return driver
 
