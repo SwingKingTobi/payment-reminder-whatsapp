@@ -47,6 +47,7 @@ from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.firefox.firefox_profile import FirefoxProfile
 from selenium.webdriver.common.by import By
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
@@ -74,15 +75,36 @@ FIREFOX_PROFILE_DIR = str(Path.home() / ".whatsapp_reminder_profile")
 # Statusdatei, merkt sich pro Monat, was schon erledigt wurde
 STATE_FILE = Path(__file__).parent / "reminder_state.json"
 
-HEADLESS = True   # nach erfolgreichem ersten QR-Login auf True stellen
+HEADLESS = False   # nach erfolgreichem ersten QR-Login auf True stellen
 
 # =============================== SELEKTOREN =================================
 # Diese CSS-Selektoren können sich ändern, wenn WhatsApp Web sein Layout
 # aktualisiert. Falls das Skript nichts mehr findet, hier zuerst nachsehen
 # (z.B. mit den Firefox-DevTools auf web.whatsapp.com prüfen).
 
-SEARCH_BOX_SELECTOR = 'div[contenteditable="true"][data-tab="3"]'
-MESSAGE_BOX_SELECTOR = 'div[contenteditable="true"][data-tab="10"]'
+# Mehrere Kandidaten pro Element - WhatsApp Web ändert seine internen
+# data-tab-Nummern und Klassennamen von Zeit zu Zeit. Das Skript probiert
+# die Selektoren der Reihe nach durch, bis einer funktioniert. Falls sich
+# WhatsApp Web wieder ändert und KEINER mehr passt: Auf web.whatsapp.com
+# Rechtsklick > "Untersuchen" auf das Such- bzw. Nachrichtenfeld, den
+# aktuellen Selektor ablesen und hier vorne in der Liste ergänzen.
+LOGGED_IN_SELECTORS = [
+    '#side',                                            # Chatlisten-Panel (stabil über viele Versionen)
+    'div[aria-label="Chat list"]',
+    'div[contenteditable="true"][data-tab="3"]',
+]
+SEARCH_BOX_SELECTORS = [
+    'div[contenteditable="true"][data-tab="3"]',
+    'div[contenteditable="true"][aria-label="Search input textbox"]',
+    'div[contenteditable="true"][aria-label="Suchtextfeld"]',
+    '#side div[contenteditable="true"]',
+]
+MESSAGE_BOX_SELECTORS = [
+    'div[contenteditable="true"][data-tab="10"]',
+    'div[contenteditable="true"][aria-label="Type a message"]',
+    'div[contenteditable="true"][aria-label="Nachricht eingeben"]',
+    'footer div[contenteditable="true"]',
+]
 MESSAGE_BUBBLE_SELECTOR = 'div.copyable-text'
 
 # ============================================================================
@@ -131,17 +153,54 @@ def start_driver() -> webdriver.Firefox:
     return driver
 
 
-def wait_for_login(driver, timeout=120) -> None:
-    """Wartet, bis WhatsApp Web eingeloggt ist (Suchfeld sichtbar)."""
-    WebDriverWait(driver, timeout).until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, SEARCH_BOX_SELECTOR))
+def find_any(driver, selectors: list[str], timeout: int = 15, context=None):
+    """
+    Probiert eine Liste von CSS-Selektoren der Reihe nach durch und gibt das
+    erste gefundene Element zurück. Wirft TimeoutException, wenn KEINER der
+    Selektoren innerhalb von 'timeout' Sekunden etwas findet.
+    """
+    scope = context or driver
+    end_time = time.time() + timeout
+    last_selector = selectors[0]
+    while time.time() < end_time:
+        for selector in selectors:
+            last_selector = selector
+            elements = scope.find_elements(By.CSS_SELECTOR, selector)
+            if elements:
+                return elements[0]
+        time.sleep(0.5)
+    raise TimeoutException(
+        f"Keiner der Selektoren hat etwas gefunden: {selectors} "
+        f"(zuletzt versucht: {last_selector})"
     )
+
+
+def wait_for_login(driver, timeout=120) -> None:
+    """Wartet, bis WhatsApp Web eingeloggt ist (Chatliste sichtbar)."""
+    try:
+        find_any(driver, LOGGED_IN_SELECTORS, timeout=timeout)
+    except TimeoutException:
+        hint = (
+            "Login-Timeout: WhatsApp Web scheint nicht eingeloggt zu sein "
+            "(oder das Layout hat sich geändert).\n"
+            "  - Falls das der ALLERERSTE Lauf ist: Setze HEADLESS = False, "
+            "starte das Skript erneut und scanne den QR-Code mit dem Handy "
+            "(WhatsApp > Verknüpfte Geräte).\n"
+            "  - Falls das schon mal funktioniert hat: Eventuell ist die "
+            "Session abgelaufen - ebenfalls einmal mit HEADLESS = False neu "
+            "einloggen.\n"
+            "  - Falls du schon eingeloggt warst und den QR-Code erfolgreich "
+            "gescannt hast: WhatsApp Web hat vermutlich sein Layout "
+            "geändert. Öffne web.whatsapp.com im normalen Firefox, "
+            "Rechtsklick auf die Chatliste links > 'Untersuchen', und "
+            "ergänze den passenden Selektor vorne in LOGGED_IN_SELECTORS."
+        )
+        print(hint)
+        raise
 
 
 def open_chat(driver, chat_name: str) -> None:
-    search_box = WebDriverWait(driver, 30).until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, SEARCH_BOX_SELECTOR))
-    )
+    search_box = find_any(driver, SEARCH_BOX_SELECTORS, timeout=30)
     search_box.click()
     search_box.send_keys(chat_name)
     time.sleep(2)
@@ -157,9 +216,7 @@ def open_chat(driver, chat_name: str) -> None:
 
 def send_message(driver, chat_name: str, text: str) -> None:
     open_chat(driver, chat_name)
-    msg_box = WebDriverWait(driver, 15).until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, MESSAGE_BOX_SELECTOR))
-    )
+    msg_box = find_any(driver, MESSAGE_BOX_SELECTORS, timeout=15)
     msg_box.click()
     for line in text.split("\n"):
         msg_box.send_keys(line)
