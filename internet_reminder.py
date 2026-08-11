@@ -75,7 +75,7 @@ FIREFOX_PROFILE_DIR = str(Path.home() / ".whatsapp_reminder_profile")
 # Statusdatei, merkt sich pro Monat, was schon erledigt wurde
 STATE_FILE = Path(__file__).parent / "reminder_state.json"
 
-HEADLESS = False   # nach erfolgreichem ersten QR-Login auf True stellen
+HEADLESS = True   # nach erfolgreichem ersten QR-Login auf True stellen
 
 # =============================== SELEKTOREN =================================
 # Diese CSS-Selektoren können sich ändern, wenn WhatsApp Web sein Layout
